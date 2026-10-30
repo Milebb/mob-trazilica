@@ -1,226 +1,285 @@
-const NTFY = "https://ntfy.sh";
-const SEND_INTERVAL_MS = 2500;
-const ALT_THRESHOLD_M = 2.5;
+const NTFY_HOST = "ntfy.sh";
+const TOPIC_PREFIX = "mobtrazilica-";
+const SEND_INTERVAL_MS = 5000;
+const STALE_MS = 30000;
+const NEAR_M = 15;
+const ALT_THRESHOLD_M = 4;
 
-const setup = document.getElementById("setup");
-const main = document.getElementById("main");
-const roomInput = document.getElementById("roomInput");
-const nameInput = document.getElementById("nameInput");
-const joinBtn = document.getElementById("joinBtn");
-const arrow = document.getElementById("arrow");
-const distLine = document.getElementById("distLine");
-const altLine = document.getElementById("altLine");
-const peerName = document.getElementById("peerName");
-const statusDot = document.getElementById("statusDot");
-const vertBlock = document.getElementById("vertBlock");
-const vertIcon = document.getElementById("vertIcon");
-const vertText = document.getElementById("vertText");
+const $ = (id) => document.getElementById(id);
+const setup = $("setup");
+const main = $("main");
+const roomInput = $("roomInput");
+const nameInput = $("nameInput");
+const joinBtn = $("joinBtn");
+const compassBtn = $("compassBtn");
+const arrow = $("arrow");
+const distLine = $("distLine");
+const infoLine = $("infoLine");
+const peerName = $("peerName");
+const statusDot = $("statusDot");
+const vertBlock = $("vertBlock");
+const vertIcon = $("vertIcon");
+const vertText = $("vertText");
 
-let room = "";
+const needsCompassPermission =
+  typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
+const myId = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
+const altSamples = [];
+
+let topic = "";
 let myName = "";
 let myPos = null;
-let peerPos = null;
-let peerLabel = "Druga osoba";
+let peer = null;
 let heading = null;
-let ws = null;
-let geoWatch = null;
-let sendTimer = null;
+let geoProblem = "";
+let arrowAngle = 0;
+let renderQueued = false;
+let compassListening = false;
+
+function cleanCode(code) {
+  return code
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64 - TOPIC_PREFIX.length);
+}
 
 function haversineM(a, b) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
 }
 
 function bearingDeg(from, to) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const toDeg = (r) => (r * 180) / Math.PI;
-  const φ1 = toRad(from.lat);
-  const φ2 = toRad(to.lat);
-  const Δλ = toRad(to.lng - from.lng);
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  const rad = Math.PI / 180;
+  const lat1 = from.lat * rad;
+  const lat2 = to.lat * rad;
+  const dLng = (to.lng - from.lng) * rad;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (Math.atan2(y, x) / rad + 360) % 360;
 }
 
 function formatDist(m) {
-  if (m < 1) return "Ovdje ste blizu";
-  if (m < 1000) return `${Math.round(m)} m`;
-  return `${(m / 1000).toFixed(1)} km`;
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
-function formatAltDelta(delta) {
-  const a = Math.abs(delta);
-  if (a < ALT_THRESHOLD_M) return "Ista visina (±GPS)";
-  return `${Math.round(a)} m ${delta > 0 ? "više" : "niže"}`;
+function screenAngle() {
+  if (screen.orientation && typeof screen.orientation.angle === "number") return screen.orientation.angle;
+  return typeof window.orientation === "number" ? window.orientation : 0;
 }
 
-function updateUI() {
-  if (!myPos || !peerPos) {
-    distLine.textContent = peerPos ? "Čekam tvoju lokaciju…" : "Čekam drugu osobu…";
-    altLine.textContent = "";
-    vertBlock.className = "vert";
-    vertIcon.textContent = "…";
-    vertText.textContent = "Kad se oboje spojite, strelica radi.";
+function rotateArrow(target) {
+  arrowAngle += ((((target - arrowAngle) % 360) + 540) % 360) - 180;
+  arrow.style.transform = `rotate(${arrowAngle}deg)`;
+}
+
+function setVertical(icon, text, cls = "") {
+  vertBlock.className = `vert ${cls}`;
+  vertIcon.textContent = icon;
+  vertText.textContent = text;
+}
+
+function renderVertical() {
+  if (myPos.alt == null || peer.alt == null) {
+    setVertical("—", "Visina: GPS je trenutno ne daje");
+    return;
+  }
+  const delta = peer.alt - myPos.alt;
+  const m = Math.round(Math.abs(delta));
+  const rough = (myPos.altAcc ?? 99) > 15 || (peer.altAcc ?? 99) > 15 ? " (grubo)" : "";
+  const who = peerName.textContent;
+  if (delta > ALT_THRESHOLD_M) setVertical("▲ GORE", `${who} je ~${m} m više${rough}`, "up");
+  else if (delta < -ALT_THRESHOLD_M) setVertical("▼ DOLJE", `${who} je ~${m} m niže${rough}`, "down");
+  else setVertical("= ISTA VISINA", `razlika ~${m} m${rough}`);
+}
+
+function render() {
+  const peerAge = peer ? Date.now() - peer.at : Infinity;
+  statusDot.className = `dot ${peerAge < STALE_MS ? "live" : peer ? "stale" : ""}`;
+
+  if (!myPos || !peer) {
+    arrow.classList.add("idle");
+    distLine.textContent = myPos ? "Čekam drugu osobu…" : geoProblem || "Tražim tvoj GPS…";
+    infoLine.textContent = peer ? "" : "Druga osoba treba otvoriti app s istim kodom.";
+    setVertical("", "");
     return;
   }
 
-  const d = haversineM(myPos, peerPos);
-  distLine.textContent = formatDist(d);
+  const d = haversineM(myPos, peer);
+  const acc = Math.round(Math.max(myPos.acc, peer.acc || 0));
+  distLine.textContent = d <= Math.max(NEAR_M, acc) ? `Blizu ste (~${Math.round(d)} m)` : formatDist(d);
 
-  const b = bearingDeg(myPos, peerPos);
-  const rot = heading != null ? b - heading : b;
-  arrow.style.transform = `rotate(${rot}deg)`;
+  rotateArrow(bearingDeg(myPos, peer) - (heading ?? 0));
+  arrow.classList.toggle("idle", peerAge > STALE_MS);
 
-  const myAlt = myPos.alt;
-  const peerAlt = peerPos.alt;
-  if (myAlt != null && peerAlt != null && !Number.isNaN(myAlt) && !Number.isNaN(peerAlt)) {
-    const delta = peerAlt - myAlt;
-    altLine.textContent = `Visina: ${formatAltDelta(delta)}`;
-    if (delta > ALT_THRESHOLD_M) {
-      vertBlock.className = "vert up";
-      vertIcon.textContent = "▲";
-      vertText.textContent = "Gore — druga osoba je više";
-    } else if (delta < -ALT_THRESHOLD_M) {
-      vertBlock.className = "vert down";
-      vertIcon.textContent = "▼";
-      vertText.textContent = "Dolje — druga osoba je niže";
-    } else {
-      vertBlock.className = "vert same";
-      vertIcon.textContent = "●";
-      vertText.textContent = "Isti sprat / ista visina";
-    }
-  } else {
-    altLine.textContent = "Visina: GPS nema podatak (npr. unutra)";
-    vertBlock.className = "vert same";
-    vertIcon.textContent = "—";
-    vertText.textContent = "Koristi udaljenost i strelicu";
-  }
+  const secs = Math.round(peerAge / 1000);
+  const parts = [`GPS ±${acc} m`, secs < 8 ? "uživo" : `prije ${secs} s`];
+  if (heading == null) parts.push("bez kompasa: vrh mobitela = sjever");
+  infoLine.textContent = parts.join(" · ");
+
+  renderVertical();
 }
 
-async function publish(payload) {
-  const topic = encodeURIComponent(room);
-  await fetch(`${NTFY}/${topic}`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    headers: { Title: "loc", Priority: "2" },
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    render();
   });
 }
 
-function connectWs() {
-  const topic = encodeURIComponent(room);
-  ws = new WebSocket(`wss://ntfy.sh/${topic}/ws`);
+function publish() {
+  if (!topic || !myPos) return;
+  const body = JSON.stringify({ id: myId, name: myName, ...myPos });
+  fetch(`https://${NTFY_HOST}/${topic}`, { method: "POST", body }).catch(() => {});
+}
+
+function connect() {
+  const ws = new WebSocket(`wss://${NTFY_HOST}/${topic}/ws`);
   ws.onmessage = (ev) => {
+    let msg;
     try {
       const data = JSON.parse(ev.data);
-      if (data.event !== "message" || !data.message) return;
-      const msg = JSON.parse(data.message);
-      if (msg.name === myName) return;
-      peerLabel = msg.name || peerLabel;
-      peerName.textContent = peerLabel;
-      peerPos = { lat: msg.lat, lng: msg.lng, alt: msg.alt ?? null, t: msg.t };
-      updateUI();
-    } catch {
-      /* ignore */
-    }
-  };
-  ws.onclose = () => {
-    setTimeout(connectWs, 2000);
-  };
-}
-
-function onGeo(pos) {
-  myPos = {
-    lat: pos.coords.latitude,
-    lng: pos.coords.longitude,
-    alt: pos.coords.altitude,
-    acc: pos.coords.accuracy,
-    t: Date.now(),
-  };
-  updateUI();
-}
-
-async function startCompass() {
-  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-    try {
-      const p = await DeviceOrientationEvent.requestPermission();
-      if (p !== "granted") return;
+      if (data.event !== "message") return;
+      msg = JSON.parse(data.message);
     } catch {
       return;
     }
-  }
-
-  window.addEventListener(
-    "deviceorientationabsolute",
-    (e) => {
-      if (e.alpha != null && e.absolute) {
-        heading = (360 - e.alpha) % 360;
-        updateUI();
-      }
-    },
-    true
-  );
-
-  window.addEventListener(
-    "deviceorientation",
-    (e) => {
-      if (e.webkitCompassHeading != null) {
-        heading = e.webkitCompassHeading;
-        updateUI();
-      } else if (e.alpha != null && heading == null) {
-        heading = (360 - e.alpha) % 360;
-        updateUI();
-      }
-    },
-    true
-  );
+    if (!msg || msg.id === myId || typeof msg.lat !== "number") return;
+    peer = { ...msg, at: Date.now() };
+    peerName.textContent = msg.name || "Druga osoba";
+    scheduleRender();
+  };
+  ws.onclose = () => setTimeout(connect, 3000);
 }
 
-joinBtn.addEventListener("click", async () => {
-  room = roomInput.value.trim();
-  myName = nameInput.value.trim() || "Ja";
-  if (room.length < 6) {
-    alert("Kod sobe: barem 6 znakova, teško pogodljiv (npr. trgovina-ana-4829).");
+function onGeo(pos) {
+  const c = pos.coords;
+  if (c.altitude == null) {
+    altSamples.length = 0;
+  } else {
+    altSamples.push(c.altitude);
+    if (altSamples.length > 5) altSamples.shift();
+  }
+  const first = !myPos;
+  myPos = {
+    lat: c.latitude,
+    lng: c.longitude,
+    acc: Math.round(c.accuracy),
+    alt: altSamples.length ? altSamples.reduce((sum, a) => sum + a, 0) / altSamples.length : null,
+    altAcc: c.altitudeAccuracy == null ? null : Math.round(c.altitudeAccuracy),
+  };
+  geoProblem = "";
+  if (first) publish();
+  scheduleRender();
+}
+
+function onGeoError(err) {
+  geoProblem = err.code === 1 ? "Dozvoli lokaciju za ovu stranicu" : "GPS je slab, pričekaj malo…";
+  scheduleRender();
+}
+
+function setHeading(raw) {
+  heading = (raw + screenAngle() + 360) % 360;
+  scheduleRender();
+}
+
+function listenCompass() {
+  if (compassListening) return;
+  compassListening = true;
+  const hasAbsolute = "ondeviceorientationabsolute" in window;
+  if (hasAbsolute) {
+    window.addEventListener("deviceorientationabsolute", (e) => {
+      if (e.alpha != null) setHeading(360 - e.alpha);
+    });
+  }
+  window.addEventListener("deviceorientation", (e) => {
+    if (e.webkitCompassHeading != null) setHeading(e.webkitCompassHeading);
+    else if (!hasAbsolute && e.absolute && e.alpha != null) setHeading(360 - e.alpha);
+  });
+}
+
+function startCompass() {
+  if (!needsCompassPermission) {
+    listenCompass();
     return;
   }
+  DeviceOrientationEvent.requestPermission()
+    .then((state) => {
+      compassBtn.classList.toggle("hidden", state === "granted");
+      if (state === "granted") listenCompass();
+    })
+    .catch(() => compassBtn.classList.remove("hidden"));
+}
+
+async function keepScreenOn() {
+  try {
+    await navigator.wakeLock?.request("screen");
+  } catch {}
+}
+
+async function shareLink() {
+  const code = cleanCode(roomInput.value);
+  if (!code) {
+    alert("Prvo upiši zajednički kod.");
+    return;
+  }
+  localStorage.setItem("mt_room", code);
+  const url = `${location.origin}${location.pathname}#k=${code}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Mob Trazilica", text: "Otvori da se nađemo u trgovini:", url });
+    } catch {}
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("Link je kopiran, zalijepi ga u poruku.");
+  } catch {
+    prompt("Kopiraj ovaj link i pošalji ga:", url);
+  }
+}
+
+function join() {
+  const code = cleanCode(roomInput.value);
+  if (code.replace(/[-_]/g, "").length < 4) {
+    alert("Upiši zajednički kod (barem 4 slova ili broja), isti na oba mobitela.");
+    return;
+  }
+  startCompass();
+  myName = nameInput.value.trim();
+  roomInput.value = code;
+  localStorage.setItem("mt_room", code);
+  localStorage.setItem("mt_name", myName);
+  topic = TOPIC_PREFIX + code;
 
   setup.classList.add("hidden");
   main.classList.remove("hidden");
-  peerName.textContent = "Tražim…";
-  statusDot.className = "dot live";
+  keepScreenOn();
+  connect();
+  navigator.geolocation.watchPosition(onGeo, onGeoError, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  setInterval(publish, SEND_INTERVAL_MS);
+  setInterval(scheduleRender, 1000);
+  render();
+}
 
-  await startCompass();
-  connectWs();
-
-  geoWatch = navigator.geolocation.watchPosition(onGeo, () => {}, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000,
-  });
-
-  sendTimer = setInterval(() => {
-    if (!myPos) return;
-    publish({
-      name: myName,
-      lat: myPos.lat,
-      lng: myPos.lng,
-      alt: myPos.alt,
-      t: Date.now(),
-    }).catch(() => {});
-  }, SEND_INTERVAL_MS);
-
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !topic) return;
+  keepScreenOn();
+  publish();
 });
 
-const savedRoom = localStorage.getItem("mt_room");
-const savedName = localStorage.getItem("mt_name");
-if (savedRoom) roomInput.value = savedRoom;
-if (savedName) nameInput.value = savedName;
-roomInput.addEventListener("change", () => localStorage.setItem("mt_room", roomInput.value.trim()));
-nameInput.addEventListener("change", () => localStorage.setItem("mt_name", nameInput.value.trim()));
+roomInput.value = cleanCode(new URLSearchParams(location.hash.slice(1)).get("k") || localStorage.getItem("mt_room") || "");
+nameInput.value = localStorage.getItem("mt_name") || "";
+joinBtn.addEventListener("click", join);
+compassBtn.addEventListener("click", startCompass);
+document.querySelectorAll(".share-btn").forEach((btn) => btn.addEventListener("click", shareLink));
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

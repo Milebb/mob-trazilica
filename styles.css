@@ -6,7 +6,7 @@ html,
 body {
   margin: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: #0a1628;
   color: #e8f0ff;
   touch-action: manipulation;
@@ -22,18 +22,16 @@ body {
   padding: max(16px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  align-items: stretch;
 }
 
-#setup h1 {
+h1 {
   font-size: 1.6rem;
-  margin: 0 0 8px;
+  margin: 8px 0;
 }
 
 .hint {
   opacity: 0.75;
-  font-size: 0.9rem;
-  margin-bottom: 24px;
+  margin: 0 0 24px;
 }
 
 label {
@@ -50,18 +48,29 @@ input {
   border-radius: 12px;
   background: #122038;
   color: inherit;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
 }
 
-#joinBtn {
-  margin-top: 8px;
-  padding: 16px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  border: none;
+button {
+  font: inherit;
   border-radius: 14px;
+  padding: 14px 20px;
+}
+
+.primary {
+  margin-top: 8px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  border: none;
   background: #3d8bff;
   color: #fff;
+}
+
+.secondary {
+  margin-top: 12px;
+  border: 1px solid #3a5070;
+  background: transparent;
+  color: #c8d8f0;
 }
 
 .top {
@@ -69,13 +78,13 @@ input {
   justify-content: center;
   align-items: center;
   gap: 10px;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 600;
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: #555;
 }
@@ -85,23 +94,26 @@ input {
   box-shadow: 0 0 10px #3dff8a;
 }
 
+.dot.stale {
+  background: #ffb020;
+}
+
 .vert {
   text-align: center;
-  margin: 12px 0 4px;
+  margin-top: 12px;
   padding: 10px;
+  min-height: 84px;
   border-radius: 16px;
   background: #122038;
 }
 
 .vert-icon {
-  font-size: 2.4rem;
-  line-height: 1.1;
-  font-weight: 700;
+  font-size: 2rem;
+  font-weight: 800;
 }
 
 .vert-text {
-  font-size: 1rem;
-  opacity: 0.9;
+  opacity: 0.85;
   margin-top: 4px;
 }
 
@@ -113,38 +125,40 @@ input {
   color: #ff9a6e;
 }
 
-.vert.same .vert-icon {
-  color: #8fa8c8;
-}
-
 .compass-wrap {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 42vh;
+  min-height: 45vh;
 }
 
 .arrow {
-  font-size: min(38vw, 180px);
-  line-height: 1;
-  color: #5cff9a;
-  text-shadow: 0 0 40px rgba(92, 255, 154, 0.45);
-  transform: rotate(0deg);
-  transition: transform 0.12s ease-out;
-  will-change: transform;
+  width: min(72vw, 340px);
+  height: min(72vw, 340px);
+  fill: #5cff9a;
+  filter: drop-shadow(0 0 24px rgba(92, 255, 154, 0.45));
+  transition: transform 0.2s linear, opacity 0.3s;
+}
+
+.arrow.idle {
+  opacity: 0.25;
 }
 
 .dist {
   text-align: center;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 2rem;
+  font-weight: 800;
   margin: 0;
 }
 
-.alt {
+.info {
   text-align: center;
-  font-size: 0.95rem;
   opacity: 0.75;
-  margin: 6px 0 16px;
+  margin: 6px 0 0;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
 }
