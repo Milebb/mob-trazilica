@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a1628" />
+  <title>Mob Trazilica</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="setup" class="screen">
+    <h1>Mob Trazilica</h1>
+    <p class="hint">Isti kod na oba mobitela. Otvori u browseru (Safari/Chrome).</p>
+    <label>Tajni kod sobe</label>
+    <input id="roomInput" type="text" autocomplete="off" placeholder="npr. trgovina-xyz-123" />
+    <label>Tvoje ime</label>
+    <input id="nameInput" type="text" autocomplete="name" placeholder="Mili / Ana" maxlength="20" />
+    <button id="joinBtn" type="button">Kreni — dijeljenje lokacije</button>
+  </div>
+
+  <div id="main" class="screen hidden">
+    <header class="top">
+      <span id="peerName">…</span>
+      <span id="statusDot" class="dot"></span>
+    </header>
+
+    <div class="vert" id="vertBlock" aria-live="polite">
+      <div id="vertIcon" class="vert-icon">—</div>
+      <div id="vertText" class="vert-text">Visina se usklađuje…</div>
+    </div>
+
+    <div class="compass-wrap">
+      <div id="arrow" class="arrow" aria-hidden="true">▲</div>
+    </div>
+
+    <p id="distLine" class="dist">—</p>
+    <p id="altLine" class="alt">—</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #0a1628;
+  color: #e8f0ff;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  min-height: 100%;
+  padding: max(16px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+#setup h1 {
+  font-size: 1.6rem;
+  margin: 0 0 8px;
+}
+
+.hint {
+  opacity: 0.75;
+  font-size: 0.9rem;
+  margin-bottom: 24px;
+}
+
+label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin-bottom: 6px;
+}
+
+input {
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #2a4060;
+  border-radius: 12px;
+  background: #122038;
+  color: inherit;
+  font-size: 1.05rem;
+}
+
+#joinBtn {
+  margin-top: 8px;
+  padding: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 14px;
+  background: #3d8bff;
+  color: #fff;
+}
+
+.top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #555;
+}
+
+.dot.live {
+  background: #3dff8a;
+  box-shadow: 0 0 10px #3dff8a;
+}
+
+.vert {
+  text-align: center;
+  margin: 12px 0 4px;
+  padding: 10px;
+  border-radius: 16px;
+  background: #122038;
+}
+
+.vert-icon {
+  font-size: 2.4rem;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.vert-text {
+  font-size: 1rem;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.vert.up .vert-icon {
+  color: #6ec8ff;
+}
+
+.vert.down .vert-icon {
+  color: #ff9a6e;
+}
+
+.vert.same .vert-icon {
+  color: #8fa8c8;
+}
+
+.compass-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42vh;
+}
+
+.arrow {
+  font-size: min(38vw, 180px);
+  line-height: 1;
+  color: #5cff9a;
+  text-shadow: 0 0 40px rgba(92, 255, 154, 0.45);
+  transform: rotate(0deg);
+  transition: transform 0.12s ease-out;
+  will-change: transform;
+}
+
+.dist {
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.alt {
+  text-align: center;
+  font-size: 0.95rem;
+  opacity: 0.75;
+  margin: 6px 0 16px;
+}
